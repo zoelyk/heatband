@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Heatband</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#667eea">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+    
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 15px;
+      overflow-x: hidden;
+    }
+    h1 {
+      font-size: 2.8rem;
+      margin-bottom: 30px;
+      text-shadow: 0 4px 15px rgba(0,0,0,0.4);
+    }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: rgba(255,255,255,0.18);
+      backdrop-filter: blur(12px);
+      border-radius: 24px;
+      padding: 35px 25px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+
+    /* 大電源按鈕 */
+    #powerBtn {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: none;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: white;
+      margin: 15px auto;
+      background: #ff4757;
+      box-shadow: 0 10px 30px rgba(255,71,87,0.6);
+      transition: all 0.3s;
+    }
+    #powerBtn.on {
+      background: #2ed573;
+      box-shadow: 0 10px 30px rgba(46,213,115,0.6);
+    }
+    #powerBtn:active { transform: scale(0.93); }
+
+    /* 模式按鈕 */
+    .modes {
+      display: flex;
+      gap: 12px;
+      margin: 35px 0;
+    }
+    .mode {
+      flex: 1;
+      padding: 16px 8px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.15);
+      border: 2px solid rgba(255,255,255,0.2);
+      font-size: 1rem;
+      transition: all 0.3s;
+    }
+    .mode.active {
+      background: rgba(255,255,255,0.4);
+      border-color: #fff;
+      font-weight: 700;
+      transform: scale(1.05);
+    }
+
+    /* 溫度 + 時間 並排顯示 */
+    .data-area {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 40px 0;
+      padding: 0 20px;
+    }
+    .temp-box {
+      text-align: left;
+    }
+    .temp-label { font-size: 1.1rem; opacity: 0.9; }
+    #temperature {
+      font-size: 4.5rem;
+      font-weight: 700;
+      line-height: 1;
+      margin-top: 8px;
+    }
+    .warning { color: #ff6b6b !important; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: 0.6; } }
+
+    .timer-box {
+      text-align: right;
+    }
+    .timer-label { font-size: 1.1rem; opacity: 0.9; }
+    #timer {
+      font-size: 2.8rem;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    #status {
+      margin-top: 20px;
+      font-size: 1.1rem;
+      min-height: 28px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Heatband</h1>
+
+  <div class="card">
+    <button id="powerBtn">OFF</button>
+
+    <div class="modes">
+      <button class="mode active" data-mode="bottle">水樽加熱</button>
+      <button class="mode" data-mode="pet">寵物保暖</button>
+      <button class="mode" data-mode="health">熱敷保健</button>
+    </div>
+
+    <div class="data-area">
+      <div class="temp-box">
+        <div class="temp-label">目前溫度</div>
+        <div id="temperature">-- °C</div>
+      </div>
+      <div class="timer-box">
+        <div class="timer-label">加熱時間</div>
+        <div id="timer">00:00</div>
+      </div>
+    </div>
+
+    <div id="status">點擊上方按鈕開機</div>
+  </div>
+
+  <script>
+    const powerBtn = document.getElementById('powerBtn');
+    const tempEl = document.getElementById('temperature');
+    const timerEl = document.getElementById('timer');
+    const statusEl = document.getElementById('status');
+    const modes = document.querySelectorAll('.mode');
+
+    let isOn = false;
+    let mode = 'bottle';
+    let currentTemp = 25.0;
+    const target = { bottle: 55, pet: 38, health: 45 };
+    let seconds = 0;
+    let timerInt, tempInt;
+
+    powerBtn.onclick = () => {
+      isOn = !isOn;
+      powerBtn.classList.toggle('on', isOn);
+      powerBtn.textContent = isOn ? 'ON' : 'OFF';
+
+      if (isOn) {
+        statusEl.textContent = `${getModeName(mode)} 模式啟動中…`;
+        startTimer();
+        startTempControl();
+      } else {
+        statusEl.textContent = '已關機';
+        stopAll();
+      }
+    };
+
+    modes.forEach(m => {
+      m.onclick = () => {
+        modes.forEach(x => x.classList.remove('active'));
+        m.classList.add('active');
+        mode = m.dataset.mode;
+        if (isOn) statusEl.textContent = `${getModeName(mode)} 模式啟動中…`;
+      };
+    });
+
+    function getModeName(m) {
+      return document.querySelector(`[data-mode="${m}"]`).textContent;
+    }
+
+    function startTimer() {
+      seconds = 0;
+      timerEl.textContent = '00:00';
+      timerInt = setInterval(() => {
+        seconds++;
+        let m = String(Math.floor(seconds/60)).padStart(2,'0');
+        let s = String(seconds%60).padStart(2,'0');
+        timerEl.textContent = `${m}:${s}`;
+
+        // 30分鐘自動關機
+        if (seconds >= 1800) {
+          alert('已達30分鐘最長使用時間，自動關機保護');
+          powerBtn.click();
+        }
+      }, 1000);
+    }
+
+    function startTempControl() {
+      tempInt = setInterval(() => {
+        let tgt = target[mode];
+
+        // 模擬溫度變化（實際專案請換成從 micro:bit 讀取）
+        if (currentTemp < tgt - 1) {
+          currentTemp += 0.5 + Math.random()*0.5;
+        } else if (currentTemp > tgt + 1) {
+          currentTemp -= 0.3;
+        }
+
+        // 高溫保護 >62°C
+        if (currentTemp > 62) {
+          tempEl.classList.add('warning');
+          statusEl.textContent = '危險 高溫警告！3秒後自動關機';
+          setTimeout(() => powerBtn.click(), 3000);
+        } else {
+          tempEl.classList.remove('warning');
+        }
+
+        tempEl.textContent = currentTemp.toFixed(1) + ' °C';
+      }, 1200);
+    }
+
+    function stopAll() {
+      clearInterval(timerInt);
+      clearInterval(tempInt);
+      currentTemp = 25.0;
+      tempEl.textContent = '-- °C';
+      timerEl.textContent = '00:00';
+      tempEl.classList.remove('warning');
+    }
+  </script>
+</body>
+</html>
